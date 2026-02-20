@@ -194,6 +194,10 @@ tr:hover td{background:rgba(255,255,255,.02);}
 <div class="dropdown-menu" id="dropdown-menu">
   <a onclick="navTo('workers')">👷 Trabajadores</a>
   <a onclick="navTo('qrcodes')">🔲 Mis QRs</a>
+  <a onclick="navTo('delete-products')">🗑 Eliminar productos</a>
+  <a onclick="exportarBackup()">💾 Exportar backup</a>
+  <a onclick="document.getElementById('import-file').click()">📂 Importar backup</a>
+  <input type="file" id="import-file" accept=".json" style="display:none" onchange="importarBackup(this)">
 </div>
 
 <nav>
@@ -305,7 +309,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
     </div>
     <div class="table-wrap" style="border:none;border-radius:0;">
       <table>
-        <thead><tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Mín.</th><th>Estado</th><th>Costo</th><th>Valor</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Mín.</th><th>Estado</th><th>Costo</th><th>Valor</th></tr></thead>
         <tbody id="inv-tbody"></tbody>
       </table>
     </div>
@@ -376,6 +380,15 @@ tr:hover td{background:rgba(255,255,255,.02);}
     <button class="btn btn-primary" onclick="printAllQR()">🖨 Imprimir todos</button>
   </div>
   <div class="qr-grid" id="qr-grid"></div>
+</div>
+
+<!-- ELIMINAR PRODUCTOS -->
+<div class="page" id="page-delete-products">
+  <div class="card" style="border-color:var(--danger);">
+    <div class="card-title" style="color:var(--danger);">🗑 Eliminar producto</div>
+    <p style="font-size:.8rem;color:var(--muted);margin-bottom:14px;">Selecciona el producto que deseas eliminar. Esta acción también eliminará todos sus movimientos.</p>
+    <div id="delete-products-list"></div>
+  </div>
 </div>
 
 </main>
@@ -449,6 +462,7 @@ function navTo(name) {
   if (name === 'movements') renderMovements();
   if (name === 'workers')   renderWorkers();
   if (name === 'qrcodes')   renderQR();
+  if (name === 'delete-products') renderDeleteProducts();
 }
 
 // ── MENU ──
@@ -660,8 +674,7 @@ function renderInventory() {
       <td class="td-mono">${p.id}</td><td><b>${p.name}</b></td>
       <td><div class="stock-bar-wrap"><span>${p.stock}</span><div class="stock-bar"><div class="stock-bar-fill" style="width:${pct}%;background:${bc}"></div></div></div></td>
       <td class="td-mono">${p.min}</td><td><span class="badge ${bc2}">${bt}</span></td>
-      <td class="td-mono">$${fmtNum(p.cost)}</td><td class="td-mono">$${fmtNum(p.stock*p.cost)}</td>
-      <td><button onclick="removeProduct(${i})" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:1rem;">✕</button></td></tr>`);
+      <td class="td-mono">$${fmtNum(p.cost)}</td><td class="td-mono">$${fmtNum(p.stock*p.cost)}</td></tr>`);
   });
 }
 function showAddProduct(){const f=document.getElementById('add-product-form');f.style.display='block';f.scrollIntoView({behavior:'smooth'});}
@@ -681,12 +694,33 @@ function addProduct(){
   showToast('✓ Producto agregado: '+name,'success');
 }
 function removeProduct(idx){
-  if(!confirm('¿Eliminar "'+products[idx].name+'"?\nSe eliminarán también sus movimientos.'))return;
-  const id=products[idx].id;
+  const p = products[idx];
+  if(!confirm('¿Eliminar "'+p.name+'" ('+p.id+')?\n\nSe eliminarán también todos sus movimientos.\nEsta acción no se puede deshacer.'))return;
   products.splice(idx,1);
-  movements=movements.filter(m=>m.prodId!==id);
-  renderInventory();updateHeader();lsGuardar();
-  showToast('Producto eliminado','error');
+  movements=movements.filter(m=>m.prodId!==p.id);
+  renderDeleteProducts();
+  updateHeader();lsGuardar();
+  showToast('"'+p.name+'" eliminado','error');
+}
+function renderDeleteProducts(){
+  const list=document.getElementById('delete-products-list');
+  if(!products.length){
+    list.innerHTML='<div class="empty"><div class="empty-icon">📦</div>No hay productos</div>';
+    return;
+  }
+  list.innerHTML='';
+  products.forEach((p,i)=>{
+    const bc=p.stock===0?'var(--danger)':p.stock<=p.min?'var(--warn)':'var(--accent)';
+    const bt=p.stock===0?'Sin stock':p.stock<=p.min?'Stock bajo':'OK';
+    list.insertAdjacentHTML('beforeend',`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-weight:600;font-size:.9rem;">${p.name}</div>
+          <div style="font-family:'Space Mono',monospace;font-size:.7rem;color:var(--muted);margin-top:3px;">${p.id} · Stock: <span style="color:${bc}">${p.stock} (${bt})</span></div>
+        </div>
+        <button onclick="removeProduct(${i})" class="btn btn-danger" style="flex-shrink:0;margin-left:12px;padding:8px 14px;">🗑 Eliminar</button>
+      </div>`);
+  });
 }
 
 // ── MOVEMENTS ──
@@ -794,6 +828,48 @@ function exportExcel(){
   showToast('Excel descargado','success');
 }
 function dl(f,d){const a=document.createElement('a');a.href=d;a.download=f;a.click();}
+
+// ── BACKUP ──
+function exportarBackup(){
+  closeMenu();
+  const backup = {
+    version: 1,
+    fecha: new Date().toISOString().split('T')[0],
+    productos: products,
+    movimientos: movements,
+    trabajadores: workers
+  };
+  const json = JSON.stringify(backup, null, 2);
+  dl('inventapp_backup_'+backup.fecha+'.json', 'data:application/json;charset=utf-8,'+encodeURIComponent(json));
+  showToast('✓ Backup descargado','success');
+}
+function importarBackup(input){
+  closeMenu();
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.productos || !data.movimientos || !data.trabajadores) {
+        return showToast('Archivo inválido','error');
+      }
+      if (!confirm('¿Importar backup del '+data.fecha+'?\n\nEsto reemplazará TODOS los datos actuales.')) {
+        input.value=''; return;
+      }
+      products  = data.productos;
+      movements = data.movimientos;
+      workers   = data.trabajadores;
+      lsGuardar();
+      updateHeader();
+      showToast('✓ Backup importado correctamente','success');
+    } catch(err) {
+      showToast('Error al leer el archivo','error');
+    }
+    input.value='';
+  };
+  reader.readAsText(file);
+}
 
 // ── HELPERS ──
 function updateHeader(){
