@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -384,23 +383,56 @@ tr:hover td{background:rgba(255,255,255,.02);}
 
 <script>
 // STATE
-let products = [
+// ════════════════════════════════════════════════════
+// PERSISTENCIA — localStorage
+// ════════════════════════════════════════════════════
+const LS_PRODUCTS  = 'inventapp_products';
+const LS_MOVEMENTS = 'inventapp_movements';
+const LS_WORKERS   = 'inventapp_workers';
+
+const DEFAULT_PRODUCTS = [
   {id:"PROD-001",name:"Laptop Dell Inspiron", stock:15,min:5, cost:850.00},
   {id:"PROD-002",name:"Mouse Inalámbrico",    stock:3, min:10,cost:25.50},
   {id:"PROD-003",name:"Teclado Mecánico",     stock:8, min:5, cost:75.00},
   {id:"PROD-004",name:"Monitor 24\"",         stock:0, min:3, cost:320.00},
   {id:"PROD-005",name:"Auriculares Bluetooth",stock:20,min:8, cost:55.00},
 ];
-let movements = [
+const DEFAULT_MOVEMENTS = [
   {id:"MOV-001",date:"2025-02-01",prodId:"PROD-001",prodName:"Laptop Dell Inspiron", type:"Ingreso",qty:10,cost:850,worker:"",obs:"Compra inicial"},
   {id:"MOV-002",date:"2025-02-05",prodId:"PROD-002",prodName:"Mouse Inalámbrico",    type:"Salida", qty:2, cost:0,  worker:"Juan Pérez",    obs:""},
   {id:"MOV-003",date:"2025-02-10",prodId:"PROD-003",prodName:"Teclado Mecánico",     type:"Ingreso",qty:8, cost:75, worker:"",              obs:"Reposición"},
   {id:"MOV-004",date:"2025-02-12",prodId:"PROD-004",prodName:"Monitor 24\"",         type:"Salida", qty:1, cost:0,  worker:"María González", obs:""},
   {id:"MOV-005",date:"2025-02-15",prodId:"PROD-005",prodName:"Auriculares Bluetooth",type:"Ingreso",qty:20,cost:55, worker:"",              obs:"Proveedor A"},
 ];
-let workers = ["Juan Pérez","María González","Carlos Rojas","Ana Martínez","Luis Soto"];
+const DEFAULT_WORKERS = ["Juan Pérez","María González","Carlos Rojas","Ana Martínez","Luis Soto"];
+
+function lsGuardar() {
+  try {
+    localStorage.setItem(LS_PRODUCTS,  JSON.stringify(products));
+    localStorage.setItem(LS_MOVEMENTS, JSON.stringify(movements));
+    localStorage.setItem(LS_WORKERS,   JSON.stringify(workers));
+  } catch(e) { console.warn('localStorage lleno:', e); }
+}
+function lsCargar() {
+  try {
+    const p = localStorage.getItem(LS_PRODUCTS);
+    const m = localStorage.getItem(LS_MOVEMENTS);
+    const w = localStorage.getItem(LS_WORKERS);
+    if (p) products  = JSON.parse(p);
+    if (m) movements = JSON.parse(m);
+    if (w) workers   = JSON.parse(w);
+  } catch(e) { console.warn('Error leyendo localStorage:', e); }
+}
+
+// ── STATE ──
+let products  = DEFAULT_PRODUCTS;
+let movements = DEFAULT_MOVEMENTS;
+let workers   = DEFAULT_WORKERS;
 let currentProd = null;
 let currentType = null;
+
+// Cargar datos guardados al iniciar
+lsCargar();
 
 // ── NAV ── (sin depender de `event`)
 const MAIN_TABS = ['scan','inventory','movements'];
@@ -575,6 +607,7 @@ function addWorkerInline() {
   document.getElementById('mov-worker').value = name;
   document.getElementById('new-worker-name').value = '';
   document.getElementById('new-worker-inline').style.display = 'none';
+  lsGuardar();
   showToast('✓ '+name+' agregado','success');
 }
 
@@ -597,6 +630,7 @@ function registerMovement() {
   else p.stock=Math.max(0,p.stock-qty);
   showToast('✓ '+currentType+' — '+qty+' u. '+(worker?'→ '+worker:''),'success');
   updateHeader();
+  lsGuardar();
   currentProd=null; currentType=null;
   document.getElementById('scan-result').classList.remove('show');
   document.getElementById('manual-id').value='';
@@ -642,6 +676,7 @@ function addProduct(){
   document.getElementById('add-product-form').style.display='none';
   ['np-id','np-name'].forEach(x=>document.getElementById(x).value='');
   renderInventory();updateHeader();
+  lsGuardar();
   showToast('✓ Producto agregado: '+name,'success');
 }
 
@@ -666,7 +701,7 @@ function renderMovements(){
 }
 function clearMovements(){
   if(!confirm('¿Limpiar todos los movimientos?'))return;
-  movements=[];renderMovements();updateHeader();showToast('Movimientos eliminados','error');
+  movements=[];renderMovements();updateHeader();lsGuardar();showToast('Movimientos eliminados','error');
 }
 
 // ── WORKERS PAGE ──
@@ -693,11 +728,11 @@ function addWorkerPage(){
   if(!name)return showToast('Ingresa un nombre','error');
   if(workers.includes(name))return showToast('Ya existe','error');
   workers.push(name);document.getElementById('wk-name').value='';
-  renderWorkers();showToast('✓ '+name+' agregado','success');
+  renderWorkers();lsGuardar();showToast('✓ '+name+' agregado','success');
 }
 function removeWorker(idx){
   if(!confirm('¿Eliminar a "'+workers[idx]+'"?'))return;
-  workers.splice(idx,1);renderWorkers();showToast('Eliminado','error');
+  workers.splice(idx,1);renderWorkers();lsGuardar();showToast('Eliminado','error');
 }
 
 // ── QR ──
