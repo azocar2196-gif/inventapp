@@ -305,7 +305,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
     </div>
     <div class="table-wrap" style="border:none;border-radius:0;">
       <table>
-        <thead><tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Mín.</th><th>Estado</th><th>Costo</th><th>Valor</th></tr></thead>
+        <thead><tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Mín.</th><th>Estado</th><th>Costo</th><th>Valor</th><th></th></tr></thead>
         <tbody id="inv-tbody"></tbody>
       </table>
     </div>
@@ -650,8 +650,8 @@ function renderInventory() {
     <div class="sum-card blue"><div class="sum-val">$${fmtNum(val)}</div><div class="sum-lbl">Valor total</div></div>`;
   const tbody=document.getElementById('inv-tbody');
   tbody.innerHTML='';
-  if (!products.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty"><div class="empty-icon">📦</div>Sin productos</div></td></tr>';return;}
-  products.forEach(p=>{
+  if (!products.length){tbody.innerHTML='<tr><td colspan="8"><div class="empty"><div class="empty-icon">📦</div>Sin productos</div></td></tr>';return;}
+  products.forEach((p,i)=>{
     const pct=p.min>0?Math.min(100,(p.stock/p.min)*100):100;
     const bc=p.stock===0?'var(--danger)':p.stock<=p.min?'var(--warn)':'var(--accent)';
     const bt=p.stock===0?'Sin Stock':p.stock<=p.min?'⚠ Bajo':'✔ OK';
@@ -660,7 +660,8 @@ function renderInventory() {
       <td class="td-mono">${p.id}</td><td><b>${p.name}</b></td>
       <td><div class="stock-bar-wrap"><span>${p.stock}</span><div class="stock-bar"><div class="stock-bar-fill" style="width:${pct}%;background:${bc}"></div></div></div></td>
       <td class="td-mono">${p.min}</td><td><span class="badge ${bc2}">${bt}</span></td>
-      <td class="td-mono">$${fmtNum(p.cost)}</td><td class="td-mono">$${fmtNum(p.stock*p.cost)}</td></tr>`);
+      <td class="td-mono">$${fmtNum(p.cost)}</td><td class="td-mono">$${fmtNum(p.stock*p.cost)}</td>
+      <td><button onclick="removeProduct(${i})" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:1rem;">✕</button></td></tr>`);
   });
 }
 function showAddProduct(){const f=document.getElementById('add-product-form');f.style.display='block';f.scrollIntoView({behavior:'smooth'});}
@@ -678,6 +679,14 @@ function addProduct(){
   renderInventory();updateHeader();
   lsGuardar();
   showToast('✓ Producto agregado: '+name,'success');
+}
+function removeProduct(idx){
+  if(!confirm('¿Eliminar "'+products[idx].name+'"?\nSe eliminarán también sus movimientos.'))return;
+  const id=products[idx].id;
+  products.splice(idx,1);
+  movements=movements.filter(m=>m.prodId!==id);
+  renderInventory();updateHeader();lsGuardar();
+  showToast('Producto eliminado','error');
 }
 
 // ── MOVEMENTS ──
