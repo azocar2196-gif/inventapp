@@ -1,10 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>InventApp</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -176,14 +176,6 @@ tr:hover td{background:rgba(255,255,255,.02);}
 #print-area{display:none;}
 @media print{body *{visibility:hidden;}#print-area,#print-area *{visibility:visible;}#print-area{position:fixed;inset:0;display:flex !important;flex-wrap:wrap;gap:16px;padding:20px;background:white;align-content:flex-start;}.qr-print-item{text-align:center;break-inside:avoid;}.qr-print-item p{font-size:10px;margin-top:4px;color:#000;}}
 </style>
-<style>
-.sync-bar{display:flex;align-items:center;gap:8px;padding:6px 18px;background:var(--surface2);border-bottom:1px solid var(--border);font-family:'Space Mono',monospace;font-size:.68rem;color:var(--muted);}
-.sync-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s;}
-.sync-dot.ok{background:var(--accent);}
-.sync-dot.error{background:var(--danger);}
-.sync-dot.loading{background:var(--warn);animation:blink 1s ease infinite;}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
-</style>
 </head>
 <body>
 <div id="print-area"></div>
@@ -210,11 +202,6 @@ tr:hover td{background:rgba(255,255,255,.02);}
   <button class="tab"        id="tab-inventory"  onclick="navTo('inventory')">📦 Inventario</button>
   <button class="tab"        id="tab-movements"  onclick="navTo('movements')">📋 Movimientos</button>
 </nav>
-
-<div class="sync-bar">
-  <div class="sync-dot" id="sync-dot"></div>
-  <span id="sync-txt">Conectando con Supabase…</span>
-</div>
 
 <main>
 
@@ -396,90 +383,6 @@ tr:hover td{background:rgba(255,255,255,.02);}
 <div id="toast"></div>
 
 <script>
-// ════════════════════════════════════════════════════
-// SUPABASE CONFIG
-// ════════════════════════════════════════════════════
-const SUPABASE_URL = 'https://wffshyfacumlpsdoidxh.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_pAscmbOXJjdz54TiXdy3ww_Vn6L9EWs';
-let sb = null;
-try {
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-} catch(e) {
-  console.warn('Supabase no disponible:', e);
-}
-
-function setSyncStatus(state, msg) {
-  const dot = document.getElementById('sync-dot');
-  const txt = document.getElementById('sync-txt');
-  if (dot) dot.className = 'sync-dot ' + state;
-  if (txt) txt.textContent = msg;
-}
-
-// Cargar todos los datos al abrir la app
-function cargarDatos() {
-  if (!sb) { setSyncStatus('error', 'Supabase no disponible — datos de ejemplo'); return; }
-  setSyncStatus('loading', 'Cargando datos…');
-  Promise.all([
-    sb.from('productos').select('*').order('id'),
-    sb.from('movimientos').select('*').order('created_at', {ascending: false}),
-    sb.from('trabajadores').select('*').order('nombre')
-  ]).then(function(results) {
-    const errores = results.filter(function(r){ return r.error; });
-    if (errores.length) {
-      console.warn('Errores Supabase:', errores.map(function(r){ return r.error; }));
-      setSyncStatus('error', 'Error al cargar — usando datos de ejemplo');
-      return;
-    }
-    if (results[0].data && results[0].data.length) products  = results[0].data.map(function(r){ return {id:r.id, name:r.nombre, stock:r.stock, min:r.stock_minimo, cost:r.costo}; });
-    if (results[1].data && results[1].data.length) movements = results[1].data.map(function(r){ return {id:r.id, date:r.fecha, prodId:r.producto_id, prodName:r.producto_nombre, type:r.tipo, qty:r.cantidad, cost:r.costo, worker:r.entregado_a||'', obs:r.observaciones||''}; });
-    if (results[2].data && results[2].data.length) workers   = results[2].data.map(function(r){ return r.nombre; });
-    updateHeader();
-    setSyncStatus('ok', 'Sincronizado con Supabase ✓');
-  }).catch(function(e) {
-    console.warn('Error cargando:', e);
-    setSyncStatus('error', 'Sin conexión — datos de ejemplo');
-  });
-}
-
-// Guardar movimiento en Supabase (en segundo plano)
-function dbGuardarMovimiento(m) {
-  if (!sb) return;
-  setSyncStatus('loading', 'Guardando…');
-  const stockActual = products.find(function(p){ return p.id===m.prodId; });
-  sb.from('movimientos').insert({
-    id: m.id, fecha: m.date, producto_id: m.prodId, producto_nombre: m.prodName,
-    tipo: m.type, cantidad: m.qty, costo: m.cost, entregado_a: m.worker||null, observaciones: m.obs||null
-  }).then(function(r) {
-    if (r.error) { setSyncStatus('error', 'Error al guardar movimiento'); return; }
-    if (stockActual) sb.from('productos').update({stock: stockActual.stock}).eq('id', m.prodId).then(function(){});
-    setSyncStatus('ok', 'Guardado en Supabase ✓');
-  });
-}
-
-// Guardar producto en Supabase (en segundo plano)
-function dbGuardarProducto(p) {
-  if (!sb) return;
-  sb.from('productos').insert({
-    id: p.id, nombre: p.name, stock: p.stock, stock_minimo: p.min, costo: p.cost
-  }).then(function(r) {
-    if (r.error) setSyncStatus('error', 'Error al guardar producto');
-    else setSyncStatus('ok', 'Producto guardado ✓');
-  });
-}
-
-// Guardar trabajador en Supabase (en segundo plano)
-function dbGuardarTrabajador(nombre) {
-  if (!sb) return;
-  sb.from('trabajadores').insert({nombre: nombre}).then(function(){});
-}
-
-// Eliminar trabajador en Supabase (en segundo plano)
-function dbEliminarTrabajador(nombre) {
-  if (!sb) return;
-  sb.from('trabajadores').delete().eq('nombre', nombre).then(function(){});
-}
-
-// ════════════════════════════════════════════════════
 // STATE
 let products = [
   {id:"PROD-001",name:"Laptop Dell Inspiron", stock:15,min:5, cost:850.00},
@@ -673,7 +576,6 @@ function addWorkerInline() {
   document.getElementById('new-worker-name').value = '';
   document.getElementById('new-worker-inline').style.display = 'none';
   showToast('✓ '+name+' agregado','success');
-  dbGuardarTrabajador(name);
 }
 
 // ── REGISTER MOVEMENT ──
@@ -689,8 +591,7 @@ function registerMovement() {
   const obs  = document.getElementById('mov-obs').value;
   const today = new Date().toISOString().split('T')[0];
   const movId = 'MOV-'+String(movements.length+1).padStart(3,'0');
-  const movData = {id:movId,date:today,prodId:currentProd.id,prodName:currentProd.name,type:currentType,qty,cost,worker,obs};
-  movements.unshift(movData);
+  movements.unshift({id:movId,date:today,prodId:currentProd.id,prodName:currentProd.name,type:currentType,qty,cost,worker,obs});
   const p = products.find(x=>x.id===currentProd.id);
   if (currentType==='Ingreso'){p.stock+=qty;if(cost>0)p.cost=cost;}
   else p.stock=Math.max(0,p.stock-qty);
@@ -701,7 +602,6 @@ function registerMovement() {
   document.getElementById('manual-id').value='';
   document.getElementById('product-select').value='';
   document.getElementById('worker-field-wrap').style.display='none';
-  dbGuardarMovimiento(movData); // Supabase en segundo plano
 }
 
 // ── INVENTORY ──
@@ -743,7 +643,7 @@ function addProduct(){
   ['np-id','np-name'].forEach(x=>document.getElementById(x).value='');
   renderInventory();updateHeader();
   showToast('✓ Producto agregado: '+name,'success');
-  dbGuardarProducto({id,name,stock,min,cost}); // Supabase en segundo plano
+}
 
 // ── MOVEMENTS ──
 function renderMovements(){
@@ -794,13 +694,10 @@ function addWorkerPage(){
   if(workers.includes(name))return showToast('Ya existe','error');
   workers.push(name);document.getElementById('wk-name').value='';
   renderWorkers();showToast('✓ '+name+' agregado','success');
-  dbGuardarTrabajador(name);
 }
 function removeWorker(idx){
   if(!confirm('¿Eliminar a "'+workers[idx]+'"?'))return;
-  const nombre=workers[idx];
   workers.splice(idx,1);renderWorkers();showToast('Eliminado','error');
-  dbEliminarTrabajador(nombre);
 }
 
 // ── QR ──
@@ -873,7 +770,6 @@ function showToast(msg,type='success'){
 
 // INIT
 updateHeader();
-cargarDatos(); // carga desde Supabase al abrir
 </script>
 </body>
 </html>
